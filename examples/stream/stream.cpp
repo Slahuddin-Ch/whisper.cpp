@@ -13,13 +13,14 @@
 #include <vector>
 #include <fstream>
 
+const std::string RESET_COLOR = "\033[0m"; // Reset color
 
 // command-line parameters
 struct whisper_params {
     int32_t n_threads  = std::min(4, (int32_t) std::thread::hardware_concurrency());
     int32_t step_ms    = 3000;
     int32_t length_ms  = 10000;
-    int32_t keep_ms    = 200;
+    int32_t keep_ms    = 0;
     int32_t capture_id = -1;
     int32_t max_tokens = 32;
     int32_t audio_ctx  = 0;
@@ -239,7 +240,8 @@ int main(int argc, char ** argv) {
 
         // process new audio
 
-        if (!use_vad) {
+        if (!use_vad) 
+        {
             while (true) {
                 audio.get(params.step_ms, pcmf32_new);
 
@@ -273,7 +275,8 @@ int main(int argc, char ** argv) {
             memcpy(pcmf32.data() + n_samples_take, pcmf32_new.data(), n_samples_new*sizeof(float));
 
             pcmf32_old = pcmf32;
-        } else {
+        } else 
+        {
             const auto t_now  = std::chrono::high_resolution_clock::now();
             const auto t_diff = std::chrono::duration_cast<std::chrono::milliseconds>(t_now - t_last).count();
 
@@ -328,46 +331,88 @@ int main(int argc, char ** argv) {
 
             // print result;
             {
-                if (!use_vad) {
+                if (!use_vad) 
+                {
                     printf("\33[2K\r");
 
                     // print long empty line to clear the previous line
                     printf("%s", std::string(100, ' ').c_str());
 
                     printf("\33[2K\r");
-                } else {
+                } else 
+                {
                     const int64_t t1 = (t_last - t_start).count()/1000000;
                     const int64_t t0 = std::max(0.0, t1 - pcmf32.size()*1000.0/WHISPER_SAMPLE_RATE);
 
                     printf("\n");
                     printf("### Transcription %d START | t0 = %d ms | t1 = %d ms\n", n_iter, (int) t0, (int) t1);
                     printf("\n");
+
+                    std::time_t now = std::time(nullptr);
+                    char time_str[9]; // HH:MM:SS is 8 characters + null terminator
+                    std::strftime(time_str, sizeof(time_str), "%H:%M:%S", std::localtime(&now));
+
+                    // Print the current time
+                    fprintf(stderr, "### Message received at : %s\n\n", time_str);
+                    
                 }
 
                 const int n_segments = whisper_full_n_segments(ctx);
                 for (int i = 0; i < n_segments; ++i) {
-                    const char * text = whisper_full_get_segment_text(ctx, i);
-
                     if (params.no_timestamps) {
-                        printf("%s", text);
-                        fflush(stdout);
+                        for (int j = 0; j < whisper_full_n_tokens(ctx, i); ++j) {
+                            if (!params.print_special) {
+                                const whisper_token id = whisper_full_get_token_id(ctx, i, j);
+                                if (id >= whisper_token_eot(ctx)) {
+                                    continue;
+                                }
+                            }
 
-                        if (params.fname_out.length() > 0) {
-                            fout << text;
+                            const char * text = whisper_full_get_token_text(ctx, i, j);
+                            const float  p    = whisper_full_get_token_p(ctx, i, j);
+
+                            const int col = std::max(0, std::min((int)k_colors.size() - 1, (int)(std::pow(p, 3) * float(k_colors.size()))));
+
+                            printf("%s%s%s", k_colors[col].c_str(), text, RESET_COLOR.c_str());
+                            fflush(stdout);
+
+                            if (params.fname_out.length() > 0) {
+                                fout << text;
+                            }
                         }
                     } else {
                         const int64_t t0 = whisper_full_get_segment_t0(ctx, i);
                         const int64_t t1 = whisper_full_get_segment_t1(ctx, i);
 
-                        std::string output = "[" + to_timestamp(t0, false) + " --> " + to_timestamp(t1, false) + "]  " + text;
-
-                        if (whisper_full_get_segment_speaker_turn_next(ctx, i)) {
-                            output += " [SPEAKER_TURN]";
-                        }
-
-                        output += "\n";
+                        std::string output = "[" + to_timestamp(t0, false) + " --> " + to_timestamp(t1, false) + "]  ";
 
                         printf("%s", output.c_str());
+                        for (int j = 0; j < whisper_full_n_tokens(ctx, i); ++j) {
+                            if (!params.print_special) {
+                                const whisper_token id = whisper_full_get_token_id(ctx, i, j);
+                                if (id >= whisper_token_eot(ctx)) {
+                                    continue;
+                                }
+                            }
+
+                            const char * text = whisper_full_get_token_text(ctx, i, j);
+                            const float  p    = whisper_full_get_token_p(ctx, i, j);
+
+                            const int col = std::max(0, std::min((int)k_colors.size() - 1, (int)(std::pow(p, 3) * float(k_colors.size()))));
+
+                            printf("%s%s%s", k_colors[col].c_str(), text, RESET_COLOR.c_str());
+                            fflush(stdout);
+
+                            if (params.fname_out.length() > 0) {
+                                fout << text;
+                            }
+                        }
+
+                        if (whisper_full_get_segment_speaker_turn_next(ctx, i)) {
+                            printf(" [SPEAKER_TURN]");
+                        }
+
+                        printf("\n");
                         fflush(stdout);
 
                         if (params.fname_out.length() > 0) {
@@ -383,6 +428,7 @@ int main(int argc, char ** argv) {
                 if (use_vad) {
                     printf("\n");
                     printf("### Transcription %d END\n", n_iter);
+                    audio.clear();
                 }
             }
 
