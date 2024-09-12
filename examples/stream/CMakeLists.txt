@@ -1,9 +1,13 @@
 if (WHISPER_SDL2)
     # stream
     set(TARGET stream)
-    add_executable(${TARGET} stream.cpp)
+    add_executable(${TARGET} stream.cpp llm_processing.cpp)
 
     include(DefaultTargetOptions)
 
-    target_link_libraries(${TARGET} PRIVATE common common-sdl whisper ${CMAKE_THREAD_LIBS_INIT})
+    # Find and link libcurl
+    find_package(CURL REQUIRED)
+
+
+    target_link_libraries(${TARGET} PRIVATE common common-sdl whisper ${CMAKE_THREAD_LIBS_INIT}  CURL::libcurl)
 endif ()

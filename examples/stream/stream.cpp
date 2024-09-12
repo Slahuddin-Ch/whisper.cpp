@@ -5,6 +5,8 @@
 #include "common-sdl.h"
 #include "common.h"
 #include "whisper.h"
+#include "llm_processing.h"
+
 
 #include <cassert>
 #include <cstdio>
@@ -12,6 +14,8 @@
 #include <thread>
 #include <vector>
 #include <fstream>
+#include <iostream>
+
 
 const std::string RESET_COLOR = "\033[0m"; // Reset color
 
@@ -116,6 +120,10 @@ void whisper_print_usage(int /*argc*/, char ** argv, const whisper_params & para
 int main(int argc, char ** argv) {
     whisper_params params;
 
+    llm_processing processor;
+    // Set the OpenAI API key
+    processor.set_api_key("sk-proj-OLcg3nF2gCbUpElE52NpT3BlbkFJTzoagaAFmr7roZmYC7OO");
+
     if (whisper_params_parse(argc, argv, params) == false) {
         return 1;
     }
@@ -193,6 +201,12 @@ int main(int argc, char ** argv) {
             fprintf(stderr, "%s: using VAD, will transcribe on speech activity\n", __func__);
         }
 
+        if (params.no_context) {
+            fprintf(stderr, "%s: NO CONTEXT\n", __func__);
+        } else {
+            fprintf(stderr, "%s: USING CONTEXTty\n", __func__);
+        }
+
         fprintf(stderr, "\n");
     }
 
@@ -228,6 +242,7 @@ int main(int argc, char ** argv) {
 
     // main audio loop
     while (is_running) {
+        std::cout<<"WHILE RUNNING \n";
         if (params.save_audio) {
             wavWriter.write(pcmf32_new.data(), pcmf32_new.size());
         }
@@ -237,6 +252,8 @@ int main(int argc, char ** argv) {
         if (!is_running) {
             break;
         }
+
+        std::string full_transcription;
 
         // process new audio
 
@@ -277,22 +294,34 @@ int main(int argc, char ** argv) {
             pcmf32_old = pcmf32;
         } else 
         {
+            // std::cout<<"WHILE RUNNING NEXT STEP \n";
             const auto t_now  = std::chrono::high_resolution_clock::now();
             const auto t_diff = std::chrono::duration_cast<std::chrono::milliseconds>(t_now - t_last).count();
 
             if (t_diff < 2000) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
+                // std::cout<<"WHILE RUNNING NEXT STEP CONTINUE\n";
                 continue;
+            }
+            else
+            {
+                // std::cout<<"WHILE RUNNING NEXT STEP CONTINUE ELSE CASE\n";
             }
 
             audio.get(2000, pcmf32_new);
 
-            if (::vad_simple(pcmf32_new, WHISPER_SAMPLE_RATE, 1000, params.vad_thold, params.freq_thold, false)) {
-                audio.get(params.length_ms, pcmf32);
-            } else {
-                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            // std::cout<<"WHILE RUNNING NEXT STEP STUCK HERE WITH AUDIO\n";
 
+            if (::vad_simple(pcmf32_new, WHISPER_SAMPLE_RATE, 1000, params.vad_thold, params.freq_thold, false)) 
+            {
+                // std::cout<<"WHILE RUNNING NEXT STEP VAD VERY LOW  IF CASE\n";
+                audio.get(params.length_ms, pcmf32);
+                
+            } else 
+            {   
+                // std::cout<<"WHILE RUNNING NEXT STEP VAD VERY LOW\n";
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
                 continue;
             }
 
@@ -301,6 +330,8 @@ int main(int argc, char ** argv) {
 
         // run the inference
         {
+            std::cout<<"RUNNING INFERENCE \n";
+
             whisper_full_params wparams = whisper_full_default_params(WHISPER_SAMPLING_GREEDY);
 
             wparams.print_progress   = false;
@@ -360,7 +391,8 @@ int main(int argc, char ** argv) {
                 const int n_segments = whisper_full_n_segments(ctx);
                 for (int i = 0; i < n_segments; ++i) {
                     if (params.no_timestamps) {
-                        for (int j = 0; j < whisper_full_n_tokens(ctx, i); ++j) {
+                        for (int j = 0; j < whisper_full_n_tokens(ctx, i); ++j) 
+                        {
                             if (!params.print_special) {
                                 const whisper_token id = whisper_full_get_token_id(ctx, i, j);
                                 if (id >= whisper_token_eot(ctx)) {
@@ -370,6 +402,8 @@ int main(int argc, char ** argv) {
 
                             const char * text = whisper_full_get_token_text(ctx, i, j);
                             const float  p    = whisper_full_get_token_p(ctx, i, j);
+
+                            full_transcription += text;  // Append to full_transcription
 
                             const int col = std::max(0, std::min((int)k_colors.size() - 1, (int)(std::pow(p, 3) * float(k_colors.size()))));
 
@@ -380,7 +414,8 @@ int main(int argc, char ** argv) {
                                 fout << text;
                             }
                         }
-                    } else {
+                    } else 
+                    {
                         const int64_t t0 = whisper_full_get_segment_t0(ctx, i);
                         const int64_t t1 = whisper_full_get_segment_t1(ctx, i);
 
@@ -388,7 +423,8 @@ int main(int argc, char ** argv) {
 
                         printf("%s", output.c_str());
                         for (int j = 0; j < whisper_full_n_tokens(ctx, i); ++j) {
-                            if (!params.print_special) {
+                            if (!params.print_special) 
+                            {
                                 const whisper_token id = whisper_full_get_token_id(ctx, i, j);
                                 if (id >= whisper_token_eot(ctx)) {
                                     continue;
@@ -397,6 +433,8 @@ int main(int argc, char ** argv) {
 
                             const char * text = whisper_full_get_token_text(ctx, i, j);
                             const float  p    = whisper_full_get_token_p(ctx, i, j);
+
+                            full_transcription += text;  // Append to full_transcription
 
                             const int col = std::max(0, std::min((int)k_colors.size() - 1, (int)(std::pow(p, 3) * float(k_colors.size()))));
 
@@ -432,6 +470,14 @@ int main(int argc, char ** argv) {
                 }
             }
 
+
+            // std::cout<< "SAVED RESULT " << full_transcription << std::endl;
+
+             // Call the LLM with a prompt
+            std::string result = processor.call(full_transcription);
+
+            std::cout << "ChatGPT says: " << result << std::endl;
+            
             ++n_iter;
 
             if (!use_vad && (n_iter % n_new_line) == 0) {
@@ -455,7 +501,7 @@ int main(int argc, char ** argv) {
             }
             fflush(stdout);
         }
-    }
+    }   
 
     audio.pause();
 
