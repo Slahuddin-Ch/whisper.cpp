@@ -122,7 +122,7 @@ int main(int argc, char ** argv) {
 
     llm_processing processor;
     // Set the OpenAI API key
-    processor.set_api_key("sk-proj-OLcg3nF2gCbUpElE52NpT3BlbkFJTzoagaAFmr7roZmYC7OO");
+    // processor.set_api_key("sk-proj-OLcg3nF2gCbUpElE52NpT3BlbkFJTzoagaAFmr7roZmYC7OO");
 
     if (whisper_params_parse(argc, argv, params) == false) {
         return 1;
