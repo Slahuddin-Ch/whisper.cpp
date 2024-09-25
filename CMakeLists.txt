@@ -71,7 +71,7 @@ option(WHISPER_SANITIZE_UNDEFINED "whisper: enable undefined sanitizer" OFF)
 
 # extra artifacts
 option(WHISPER_BUILD_TESTS    "whisper: build tests"          ${WHISPER_STANDALONE})
-option(WHISPER_BUILD_EXAMPLES "whisper: build examples"       ${WHISPER_STANDALONE})
+option(WHISPER_BUILD_PROJECTS "whisper: build projects"       ${WHISPER_STANDALONE})
 option(WHISPER_BUILD_SERVER   "whisper: build server example" ${WHISPER_STANDALONE})
 
 # 3rd party libs
@@ -172,7 +172,7 @@ install(FILES "${CMAKE_CURRENT_BINARY_DIR}/whisper.pc"
         DESTINATION lib/pkgconfig)
 
 #
-# programs, examples and tests
+# programs, projects and tests
 #
 
 if (WHISPER_BUILD_TESTS AND NOT CMAKE_JS_VERSION)
@@ -180,6 +180,6 @@ if (WHISPER_BUILD_TESTS AND NOT CMAKE_JS_VERSION)
     #add_subdirectory(tests)
 endif ()
 
-if (WHISPER_BUILD_EXAMPLES)
-    add_subdirectory(examples)
+if (WHISPER_BUILD_PROJECTS)
+    add_subdirectory(projects)
 endif()
